@@ -1,6 +1,7 @@
 %global git_moby https://github.com/moby/moby
 %global commit_moby f34e4d295d5c17a78c33beb14b65e5d001c16968
 %global shortcommit_moby %(c=%{commit_moby}; echo ${c:0:7})
+%global upstream_name moby
 
 %global git_cli https://github.com/docker/cli
 %global commit_cli 4b61f560b5b0812fcebbe320a98baac9408a5dd4
@@ -23,7 +24,7 @@
 %global commit_tini 949e6facb77383876aeff8a6944dde66b3089574
 %global shortcommit_tini %(c=%{commit_tini}; echo ${c:0:7})
 
-Name: moby
+Name: salmon
 Version: 17.06.0
 Release: 1.git%{shortcommit_moby}%{?dist}
 Summary: The open-source application container engine
@@ -77,7 +78,7 @@ for deploying and scaling web apps, databases, and backend services without
 depending on a particular stack or provider.
 
 %prep
-%autosetup -Sgit -n %{name}-%{commit_moby}
+%autosetup -Sgit -n %{upstream_name}-%{commit_moby}
 
 # untar cli
 tar zxf %{SOURCE1}
@@ -98,12 +99,13 @@ tar zxf %{SOURCE5}
 mkdir _build
 pushd _build
 mkdir -p $(pwd)/src/github.com/docker
-ln -s $(dirs +1 -l) src/github.com/docker/%{name}
+ln -s $(dirs +1 -l) src/github.com/docker/%{upstream_name}
+ln -s $(dirs +1 -l) src/github.com/docker/docker
 popd
 
 # build docker-runc
 export DOCKER_GITCOMMIT=%{shortcommit_moby}
-pushd _build/src/github.com/docker/%{name}/runc-%{commit_runc}
+pushd _build/src/github.com/docker/%{upstream_name}/runc-%{commit_runc}
 GOPATH=$(pwd) make BUILDTAGS="seccomp selinux" -o runc
 popd
 
@@ -130,7 +132,6 @@ popd
 #GOPATH=$(pwd) RUNC_BUILDTAGS="seccomp selinux" hack/dockerfile/install-binaries.sh
 export DOCKER_BUILDTAGS="seccomp selinux"
 DOCKER_DEBUG=1 GOPATH=$(pwd)/_build:$(pwd)/vendor:%{gopath} bash -x hack/make.sh dynbinary
-popd
 
 pushd cli-%{commit_cli}
 mkdir -p src/github.com/docker/cli

@@ -23,7 +23,7 @@
 %global commit_tini 949e6facb77383876aeff8a6944dde66b3089574
 %global shortcommit_tini %(c=%{commit_tini}; echo ${c:0:7})
 
-Name: salmon
+Name: moby
 Version: 17.06.0
 Release: 1.git%{shortcommit_moby}%{?dist}
 Summary: The open-source application container engine

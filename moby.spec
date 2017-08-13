@@ -10,6 +10,19 @@
 %global commit_runc 2d41c047c83e09a6d61d464906feb2a2f3c52aa4
 %global shortcommit_runc %(c=%{commit_runc}; echo ${c:0:7})
 
+%global git_containerd https://github.com/containerd/containerd
+%global commit_containerd 3addd840653146c90a254301d6c3a663c7fd6429
+%global shortcommit_containerd %(c=%{commit_containerd}; echo ${c:0:7})
+
+%global git_libnetwork https://github.com/docker/libnetwork
+%global commit_libnetwork 7b2b1feb1de4817d522cc372af149ff48d25028e
+%global shortcommit_libnetwork %(c=%{commit_libnetwork}; echo ${c:0:7})
+
+# tini
+%global git_tini https://github.com/krallin/tini
+%global commit_tini 949e6facb77383876aeff8a6944dde66b3089574
+%global shortcommit_tini %(c=%{commit_tini}; echo ${c:0:7})
+
 Name: moby
 Version: 17.06.0
 Release: 1.git%{shortcommit_moby}%{?dist}
@@ -18,6 +31,9 @@ License: ASL 2.0
 Source0: %{git_moby}/archive/%{commit_moby}/moby-%{shortcommit_moby}.tar.gz
 Source1: %{git_cli}/archive/%{commit_cli}/cli-%{shortcommit_cli}.tar.gz
 Source2: %{git_runc}/archive/%{commit_runc}/runc-%{shortcommit_runc}.tar.gz
+Source3: %{git_containerd}/archive/%{commit_containerd}/containerd-%{shortcommit_containerd}.tar.gz
+Source4: %{git_libnetwork}/archive/%{commit_libnetwork}/libnetwork-%{shortcommit_libnetwork}.tar.gz
+Source5: %{git_tini}/archive/%{commit_tini}/tini-%{shortcommit_tini}.tar.gz
 URL: https://www.docker.com
 
 # DWZ problem with multiple golang binary, see bug
@@ -62,20 +78,58 @@ depending on a particular stack or provider.
 
 %prep
 %autosetup -Sgit -n %{name}-%{commit_moby}
+
+# untar cli
 tar zxf %{SOURCE1}
+
+# untar runc
+tar zxf %{SOURCE2}
+
+# untar containerd
+tar zxf %{SOURCE3}
+
+# untar libnetwork
+tar zxf %{SOURCE4}
+
+# untar tini
+tar zxf %{SOURCE5}
 
 %build
 mkdir _build
 pushd _build
 mkdir -p $(pwd)/src/github.com/docker
-ln -s $(dirs +1 -l) src/github.com/docker/moby
+ln -s $(dirs +1 -l) src/github.com/docker/%{name}
 popd
 
+# build docker-runc
 export DOCKER_GITCOMMIT=%{shortcommit_moby}
-pushd _build/src/github.com/docker/%{name}
-GOPATH=$(pwd) RUNC_BUILDTAGS="seccomp selinux" hack/dockerfile/install-binaries.sh runc-dynamic containerd-dynamic proxy-dynamic tini
-#TMP_GOPATH="/go" hack/dockerfile/install-binaries.sh runc-dynamic containerd-dynamic proxy-dynamic tini
-BUILDTAGS="seccomp selinux" hack/make.sh dynbinary
+pushd _build/src/github.com/docker/%{name}/runc-%{commit_runc}
+GOPATH=$(pwd) make BUILDTAGS="seccomp selinux" -o runc
+popd
+
+# build docker-containerd
+pushd containerd-%{commit_containerd}
+mkdir -p src/github.com/containerd
+ln -s $(pwd) src/github.com/containerd/containerd
+GOPATH=$(pwd) make
+popd
+
+# build docker-proxy / libnetwork
+pushd libnetwork-%{commit_libnetwork}
+mkdir -p src/github.com/docker
+ln -s $(pwd) src/github.com/docker/libnetwork
+GOPATH=$(pwd) go build -ldflags="-linkmode=external" -o docker-proxy github.com/docker/libnetwork/cmd/proxy
+popd
+
+# build tini
+pushd tini-%{commit_tini}
+cmake .
+make tini-static
+popd
+
+#GOPATH=$(pwd) RUNC_BUILDTAGS="seccomp selinux" hack/dockerfile/install-binaries.sh
+export DOCKER_BUILDTAGS="seccomp selinux"
+DOCKER_DEBUG=1 GOPATH=$(pwd)/_build:$(pwd)/vendor:%{gopath} bash -x hack/make.sh dynbinary
 popd
 
 pushd cli-%{commit_cli}

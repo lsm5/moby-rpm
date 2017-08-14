@@ -1,20 +1,27 @@
+%global origname docker
+
+# moby
 %global git_moby https://github.com/moby/moby
 %global commit_moby f34e4d295d5c17a78c33beb14b65e5d001c16968
 %global shortcommit_moby %(c=%{commit_moby}; echo ${c:0:7})
 
-%global git_cli https://github.com/docker/cli
+# cli
+%global git_cli https://github.com/%{origname}/cli
 %global commit_cli 4b61f560b5b0812fcebbe320a98baac9408a5dd4
 %global shortcommit_cli %(c=%{commit_cli}; echo ${c:0:7})
 
-%global git_runc https://github.com/docker/runc
+# docker-runc
+%global git_runc https://github.com/%{origname}/runc
 %global commit_runc 2d41c047c83e09a6d61d464906feb2a2f3c52aa4
 %global shortcommit_runc %(c=%{commit_runc}; echo ${c:0:7})
 
+# docker-containerd
 %global git_containerd https://github.com/containerd/containerd
 %global commit_containerd 3addd840653146c90a254301d6c3a663c7fd6429
 %global shortcommit_containerd %(c=%{commit_containerd}; echo ${c:0:7})
 
-%global git_libnetwork https://github.com/docker/libnetwork
+# docker-proxy / libnetwork
+%global git_libnetwork https://github.com/%{origname}/libnetwork
 %global commit_libnetwork 7b2b1feb1de4817d522cc372af149ff48d25028e
 %global shortcommit_libnetwork %(c=%{commit_libnetwork}; echo ${c:0:7})
 
@@ -28,19 +35,42 @@ Version: 17.06.0
 Release: 1.git%{shortcommit_moby}%{?dist}
 Summary: The open-source application container engine
 License: ASL 2.0
+# no golang / go-md2man for ppc64
+ExcludeArch: ppc64
 Source0: %{git_moby}/archive/%{commit_moby}/moby-%{shortcommit_moby}.tar.gz
 Source1: %{git_cli}/archive/%{commit_cli}/cli-%{shortcommit_cli}.tar.gz
 Source2: %{git_runc}/archive/%{commit_runc}/runc-%{shortcommit_runc}.tar.gz
 Source3: %{git_containerd}/archive/%{commit_containerd}/containerd-%{shortcommit_containerd}.tar.gz
 Source4: %{git_libnetwork}/archive/%{commit_libnetwork}/libnetwork-%{shortcommit_libnetwork}.tar.gz
 Source5: %{git_tini}/archive/%{commit_tini}/tini-%{shortcommit_tini}.tar.gz
-URL: https://www.docker.com
+Source6: %{origname}.service
+Source7: %{origname}-containerd.service
+URL: https://www.%{origname}.com
 
 # DWZ problem with multiple golang binary, see bug
 # https://bugzilla.redhat.com/show_bug.cgi?id=995136#c12
 %global _dwz_low_mem_die_limit 0
 
 BuildRequires: libtool-ltdl-devel
+BuildRequires: pkgconfig(systemd)
+BuildRequires: git
+BuildRequires: sed
+BuildRequires: cmake
+BuildRequires: glibc-static
+BuildRequires: gpgme-devel
+BuildRequires: libassuan-devel
+BuildRequires: %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang >= 1.6.2}
+BuildRequires: go-md2man
+BuildRequires: device-mapper-devel
+%if 0%{?fedora}
+BuildRequires: godep
+BuildRequires: libseccomp-static >= 2.3.0
+%else %if 0%{?centos}
+BuildRequires: libseccomp-devel
+%endif
+BuildRequires: pkgconfig(audit)
+BuildRequires: btrfs-progs-devel
+BuildRequires: sqlite-devel
 BuildRequires: pkgconfig(systemd)
 
 # required packages on install
@@ -55,15 +85,21 @@ Requires: xz
 Requires: device-mapper-libs >= 1.02.90-1
 
 # conflicting packages
-Conflicts: docker
-Conflicts: docker-io
-Conflicts: docker-engine-cs
-Conflicts: docker-ee
+Conflicts: %{origname}
+Conflicts: %{origname}-io
+Conflicts: %{origname}-engine-cs
+Conflicts: %{origname}-ee
 
 # Obsolete packages
-Obsoletes: docker-ce-selinux
-Obsoletes: docker-engine-selinux
-Obsoletes: docker-engine
+Obsoletes: %{origname}-ce-selinux
+Obsoletes: %{origname}-engine-selinux
+Obsoletes: %{origname}-engine
+
+# use rhel-push-plugin subpackage from "docker"
+Requires: %{origname}-rhel-push-plugin
+
+# use atomic-registries subpackage for registry configuration
+Requires: atomic-registries
 
 %description
 Docker is an open source project to build, ship and run any application as a
@@ -75,6 +111,41 @@ everything in between - and they don't require you to use a particular
 language, framework or packaging system. That makes them great building blocks
 for deploying and scaling web apps, databases, and backend services without
 depending on a particular stack or provider.
+
+%package fish-completion
+Summary: fish completion files for Docker
+Requires: %{name} = %{version}-%{release}
+Requires: fish
+Conflicts: %{origname}-fish-completion
+
+%description fish-completion
+This package installs %{summary}.
+
+%package vim
+Summary: vim syntax highlighting files for Moby
+Requires: %{name} = %{version}-%{release}
+Requires: vim
+Conflicts: %{origname}-vim
+
+%description vim
+This package installs %{summary}.
+
+%package zsh-completion
+Summary: zsh completion files for Moby
+Requires: %{name} = %{version}-%{release}
+Requires: zsh
+Conflicts: %{origname}-zsh-completion
+
+%description zsh-completion
+This package installs %{summary}.
+
+%package nano
+Summary: nano syntax highlighting files for Moby
+Requires: %{name} = %{version}-%{release}
+Requires: nano
+
+%description nano
+This package installs %{summary}.
 
 %prep
 %autosetup -Sgit -n %{name}-%{commit_moby}
@@ -97,29 +168,32 @@ tar zxf %{SOURCE5}
 %build
 mkdir _build
 pushd _build
-mkdir -p $(pwd)/src/github.com/docker
-ln -s $(dirs +1 -l) src/github.com/docker/%{name}
-ln -s $(dirs +1 -l) src/github.com/docker/docker
+mkdir -p $(pwd)/src/github.com/%{origname}
+ln -s $(dirs +1 -l) src/github.com/%{origname}/%{name}
+ln -s $(dirs +1 -l) src/github.com/%{origname}/%{origname}
 popd
 
-# build docker-runc
-export DOCKER_GITCOMMIT=%{shortcommit_moby}
-pushd _build/src/github.com/docker/%{name}/runc-%{commit_runc}
-GOPATH=$(pwd) make BUILDTAGS="seccomp selinux" -o runc
+# build %{origname}-runc
+pushd runc-%{commit_runc}
+mv vendor src
+mkdir -p src/github.com/opencontainers
+ln -s $(pwd) src/github.com/opencontainers/runc
+#sed -i 's/go build -i/go build/g' Makefile
+GOPATH=$(pwd) make BUILDTAGS="seccomp selinux"
 popd
 
-# build docker-containerd
+# build %{origname}-containerd
 pushd containerd-%{commit_containerd}
 mkdir -p src/github.com/containerd
 ln -s $(pwd) src/github.com/containerd/containerd
 GOPATH=$(pwd) make
 popd
 
-# build docker-proxy / libnetwork
+# build %{origname}-proxy / libnetwork
 pushd libnetwork-%{commit_libnetwork}
-mkdir -p src/github.com/docker
-ln -s $(pwd) src/github.com/docker/libnetwork
-GOPATH=$(pwd) go build -ldflags="-linkmode=external" -o docker-proxy github.com/docker/libnetwork/cmd/proxy
+mkdir -p src/github.com/%{origname}
+ln -s $(pwd) src/github.com/%{origname}/libnetwork
+GOPATH=$(pwd) go build -ldflags="-linkmode=external" -o %{origname}-proxy github.com/%{origname}/libnetwork/cmd/proxy
 popd
 
 # build tini
@@ -128,148 +202,137 @@ cmake .
 make tini-static
 popd
 
-#GOPATH=$(pwd) RUNC_BUILDTAGS="seccomp selinux" hack/dockerfile/install-binaries.sh
+#GOPATH=$(pwd) RUNC_BUILDTAGS="seccomp selinux" hack/%{origname}file/install-binaries.sh
+export DOCKER_GITCOMMIT=%{shortcommit_moby}
 export DOCKER_BUILDTAGS="seccomp selinux"
 DOCKER_DEBUG=1 GOPATH=$(pwd)/_build:$(pwd)/vendor:%{gopath} bash -x hack/make.sh dynbinary
+#rm -rf bundles/latest/dynbinary-daemon/*.{md5,sha256}
 
 pushd cli-%{commit_cli}
-mkdir -p src/github.com/docker/cli
-ln -s $(pwd)/* src/github.com/docker/cli
+mkdir -p src/github.com/%{origname}/cli
+ln -s $(pwd)/* src/github.com/%{origname}/cli
 export GOPATH=%{gopath}:$(pwd)
 make VERSION=$(cat VERSION) GITCOMMIT=%{shortcommit_cli} dynbinary # cli
+./man/md2man-all.sh
 popd
 
 %check
-#cli/build/docker -v
-#engine/bundles/%{_origversion}/dynbinary-daemon/dockerd -v
+#cli/build/%{origname} -v
+#engine/bundles/%{_origversion}/dynbinary-daemon/%{origname}d -v
 
 %install
+install -dp %{buildroot}%{_bindir}
+install -dp %{buildroot}%{_libexecdir}/%{name}
+
 # install binary
-install -d $RPM_BUILD_ROOT/%{_bindir}
-install -p -m 755 cli/build/docker $RPM_BUILD_ROOT/%{_bindir}/docker
-install -p -m 755 engine/bundles/%{_origversion}/dynbinary-daemon/dockerd-%{_origversion} $RPM_BUILD_ROOT/%{_bindir}/dockerd
+install -p -m 755 cli-%{commit_cli}/build/%{origname} %{buildroot}%{_bindir}/%{origname}
+install -p -m 755 bundles/latest/dynbinary-daemon/%{origname}d %{buildroot}%{_bindir}/%{origname}d
 
 # install proxy
-install -p -m 755 /usr/local/bin/docker-proxy $RPM_BUILD_ROOT/%{_bindir}/docker-proxy
+install -p -m 755 libnetwork-%{commit_libnetwork}/%{origname}-proxy %{buildroot}%{_libexecdir}/%{name}/%{origname}-proxy
 
 # install containerd
-install -p -m 755 /usr/local/bin/docker-containerd $RPM_BUILD_ROOT/%{_bindir}/docker-containerd
-install -p -m 755 /usr/local/bin/docker-containerd-shim $RPM_BUILD_ROOT/%{_bindir}/docker-containerd-shim
-install -p -m 755 /usr/local/bin/docker-containerd-ctr $RPM_BUILD_ROOT/%{_bindir}/docker-containerd-ctr
+install -p -m 755 containerd-%{commit_containerd}/bin/containerd %{buildroot}%{_libexecdir}/%{name}/%{origname}-containerd
+install -p -m 755 containerd-%{commit_containerd}/bin/containerd-shim %{buildroot}%{_libexecdir}/%{name}/%{origname}-containerd-shim
+install -p -m 755 containerd-%{commit_containerd}/bin/ctr %{buildroot}%{_libexecdir}/%{name}/%{origname}-containerd-ctr
 
 # install runc
-install -p -m 755 /usr/local/bin/docker-runc $RPM_BUILD_ROOT/%{_bindir}/docker-runc
+install -p -m 755 runc-%{commit_runc}/runc %{buildroot}%{_libexecdir}/%{name}/%{origname}-runc
 
 # install tini
-install -p -m 755 /usr/local/bin/docker-init $RPM_BUILD_ROOT/%{_bindir}/docker-init
+install -p -m 755 tini-%{commit_tini}/tini-static %{buildroot}%{_libexecdir}/%{name}/%{origname}-init
 
 # install udev rules
-install -d $RPM_BUILD_ROOT/%{_sysconfdir}/udev/rules.d
-install -p -m 644 engine/contrib/udev/80-docker.rules $RPM_BUILD_ROOT/%{_sysconfdir}/udev/rules.d/80-docker.rules
+install -dp %{buildroot}%{_sysconfdir}/udev/rules.d
+install -p -m 644 contrib/udev/80-%{origname}.rules %{buildroot}%{_sysconfdir}/udev/rules.d/80-%{origname}.rules
 
 # add init scripts
-install -d $RPM_BUILD_ROOT/etc/sysconfig
-install -d $RPM_BUILD_ROOT/%{_initddir}
-install -d $RPM_BUILD_ROOT/%{_unitdir}
-install -p -m 644 /systemd/docker.service $RPM_BUILD_ROOT/%{_unitdir}/docker.service
+install -dp %{buildroot}/%{_unitdir}
+install -p -m 644 %{SOURCE6} %{buildroot}%{_unitdir}
+install -p -m 644 %{SOURCE7} %{buildroot}%{_unitdir}
+
 # add bash, zsh, and fish completions
-install -d $RPM_BUILD_ROOT/usr/share/bash-completion/completions
-install -d $RPM_BUILD_ROOT/usr/share/zsh/vendor-completions
-install -d $RPM_BUILD_ROOT/usr/share/fish/vendor_completions.d
-install -p -m 644 cli/contrib/completion/bash/docker $RPM_BUILD_ROOT/usr/share/bash-completion/completions/docker
-install -p -m 644 cli/contrib/completion/zsh/_docker $RPM_BUILD_ROOT/usr/share/zsh/vendor-completions/_docker
-install -p -m 644 cli/contrib/completion/fish/docker.fish $RPM_BUILD_ROOT/usr/share/fish/vendor_completions.d/docker.fish
+install -dp %{buildroot}%{_datadir}/bash-completion/completions
+install -dp %{buildroot}%{_datadir}/zsh/vendor-completions
+install -dp %{buildroot}%{_datadir}/fish/vendor_completions.d
+install -p -m 644 cli-%{commit_cli}/contrib/completion/bash/%{origname} %{buildroot}%{_datadir}/bash-completion/completions/%{origname}
+install -p -m 644 cli-%{commit_cli}/contrib/completion/zsh/_%{origname} %{buildroot}%{_datadir}/zsh/vendor-completions/_%{origname}
+install -p -m 644 cli-%{commit_cli}/contrib/completion/fish/%{origname}.fish %{buildroot}%{_datadir}/fish/vendor_completions.d/%{origname}.fish
 
 # install manpages
-install -d %{buildroot}%{_mandir}/man1
-install -p -m 644 cli/man/man1/*.1 $RPM_BUILD_ROOT/%{_mandir}/man1
-install -d %{buildroot}%{_mandir}/man5
-install -p -m 644 cli/man/man5/*.5 $RPM_BUILD_ROOT/%{_mandir}/man5
-install -d %{buildroot}%{_mandir}/man8
-install -p -m 644 cli/man/man8/*.8 $RPM_BUILD_ROOT/%{_mandir}/man8
+install -dp %{buildroot}%{_mandir}/man{1,5,8}
+install -p -m 644 cli-%{commit_cli}/man/man1/*.1 %{buildroot}%{_mandir}/man1
+install -p -m 644 cli-%{commit_cli}/man/man5/*.5 %{buildroot}%{_mandir}/man5
+install -p -m 644 cli-%{commit_cli}/man/man8/*.8 %{buildroot}%{_mandir}/man8
 
 # add vimfiles
-install -d $RPM_BUILD_ROOT/usr/share/vim/vimfiles/doc
-install -d $RPM_BUILD_ROOT/usr/share/vim/vimfiles/ftdetect
-install -d $RPM_BUILD_ROOT/usr/share/vim/vimfiles/syntax
-install -p -m 644 engine/contrib/syntax/vim/doc/dockerfile.txt $RPM_BUILD_ROOT/usr/share/vim/vimfiles/doc/dockerfile.txt
-install -p -m 644 engine/contrib/syntax/vim/ftdetect/dockerfile.vim $RPM_BUILD_ROOT/usr/share/vim/vimfiles/ftdetect/dockerfile.vim
-install -p -m 644 engine/contrib/syntax/vim/syntax/dockerfile.vim $RPM_BUILD_ROOT/usr/share/vim/vimfiles/syntax/dockerfile.vim
+install -dp %{buildroot}%{_datadir}/vim/vimfiles/doc
+install -dp %{buildroot}%{_datadir}/vim/vimfiles/ftdetect
+install -dp %{buildroot}%{_datadir}/vim/vimfiles/syntax
+install -p -m 644 contrib/syntax/vim/doc/%{origname}file.txt %{buildroot}%{_datadir}/vim/vimfiles/doc/%{origname}file.txt
+install -p -m 644 contrib/syntax/vim/ftdetect/%{origname}file.vim %{buildroot}%{_datadir}/vim/vimfiles/ftdetect/%{origname}file.vim
+install -p -m 644 contrib/syntax/vim/syntax/%{origname}file.vim %{buildroot}%{_datadir}/vim/vimfiles/syntax/%{origname}file.vim
 
-# add nano
-install -d $RPM_BUILD_ROOT/usr/share/nano
-install -p -m 644 engine/contrib/syntax/nano/Dockerfile.nanorc $RPM_BUILD_ROOT/usr/share/nano/Dockerfile.nanorc
+# add nano files
+install -dp %{buildroot}%{_datadir}/nano
+install -p -m 644 contrib/syntax/nano/Dockerfile.nanorc %{buildroot}%{_datadir}/nano/Dockerfile.nanorc
 
-mkdir -p build-docs
-for engine_file in AUTHORS CHANGELOG.md CONTRIBUTING.md LICENSE MAINTAINERS NOTICE README.md; do
-    cp "engine/$engine_file" "build-docs/engine-$engine_file"
-done
 for cli_file in LICENSE MAINTAINERS NOTICE README.md; do
-    cp "cli/$cli_file" "build-docs/cli-$cli_file"
+    cp "cli-%{commit_cli}/$cli_file" "$(pwd)/cli-$cli_file"
 done
 
-# list files owned by the package here
+%post
+%systemd_post %{origname}
+
+%preun
+%systemd_preun %{origname}
+
+%postun
+%systemd_postun_with_restart %{origname}
+
 %files
-%doc build-docs/engine-AUTHORS build-docs/engine-CHANGELOG.md build-docs/engine-CONTRIBUTING.md build-docs/engine-LICENSE build-docs/engine-MAINTAINERS build-docs/engine-NOTICE build-docs/engine-README.md
-%doc build-docs/cli-LICENSE build-docs/cli-MAINTAINERS build-docs/cli-NOTICE build-docs/cli-README.md
-%{_bindir}/docker
-%{_bindir}/dockerd
-%{_bindir}/docker-containerd
-%{_bindir}/docker-containerd-shim
-%{_bindir}/docker-containerd-ctr
-%{_bindir}/docker-proxy
-%{_bindir}/docker-runc
-%{_bindir}/docker-init
-%{_sysconfdir}/udev/rules.d/80-docker.rules
-%{_unitdir}/docker.service
-%{_datadir}/bash-completion/completions/docker
-%{_datadir}/zsh/vendor-completions/_docker
-%{_datadir}/fish/vendor_completions.d/docker.fish
+%license cli-LICENSE LICENSE
+%doc AUTHORS CHANGELOG.md CONTRIBUTING.md MAINTAINERS NOTICE README.md
+%doc cli-MAINTAINERS cli-NOTICE cli-README.md
+%{_bindir}/%{origname}
+%{_bindir}/%{origname}d
+%{_libexecdir}/%{name}/%{origname}-containerd
+%{_libexecdir}/%{name}/%{origname}-containerd-shim
+%{_libexecdir}/%{name}/%{origname}-containerd-ctr
+%{_libexecdir}/%{name}/%{origname}-proxy
+%{_libexecdir}/%{name}/%{origname}-runc
+%{_libexecdir}/%{name}/%{origname}-init
+%{_sysconfdir}/udev/rules.d/80-%{origname}.rules
+%{_unitdir}/%{origname}.service
+%{_unitdir}/%{origname}-containerd.service
+%{_datadir}/bash-completion/completions/%{origname}
 %{_mandir}/man1/*
 %{_mandir}/man5/*
 %{_mandir}/man8/*
-%{_datadir}/vim/vimfiles/doc/dockerfile.txt
-%{_datadir}/vim/vimfiles/ftdetect/dockerfile.vim
-%{_datadir}/vim/vimfiles/syntax/dockerfile.vim
+
+%files vim
+%dir %{_datadir}/vim/vimfiles/{doc,ftdetect,syntax}
+%{_datadir}/vim/vimfiles/doc/%{origname}file.txt
+%{_datadir}/vim/vimfiles/ftdetect/%{origname}file.vim
+%{_datadir}/vim/vimfiles/syntax/%{origname}file.vim
+
+%files zsh-completion
+%dir %{_datadir}/zsh/vendor-completions/
+%{_datadir}/zsh/vendor-completions/_%{origname}
+
+%files fish-completion
+%dir %{_datadir}/fish/vendor_completions.d
+%{_datadir}/fish/vendor_completions.d/%{origname}.fish
+
+%files nano
+%dir %{_datadir}/nano
 %{_datadir}/nano/Dockerfile.nanorc
-
-%pre
-if [ $1 -gt 0 ] ; then
-    # package upgrade scenario, before new files are installed
-
-    # clear any old state
-    rm -f %{_localstatedir}/lib/rpm-state/docker-is-active > /dev/null 2>&1 || :
-
-    # check if docker service is running
-    if systemctl is-active docker > /dev/null 2>&1; then
-        systemctl stop docker > /dev/null 2>&1 || :
-        touch %{_localstatedir}/lib/rpm-state/docker-is-active > /dev/null 2>&1 || :
-    fi
-fi
-
-%post
-%systemd_post docker
-if ! getent group docker > /dev/null; then
-    groupadd --system docker
-fi
-
-%preun
-%systemd_preun docker
-
-%postun
-%systemd_postun_with_restart docker
-
-%posttrans
-if [ $1 -ge 0 ] ; then
-    # package upgrade scenario, after new files are installed
-
-    # check if docker was running before upgrade
-    if [ -f %{_localstatedir}/lib/rpm-state/docker-is-active ]; then
-        systemctl start docker > /dev/null 2>&1 || :
-        rm -f %{_localstatedir}/lib/rpm-state/docker-is-active > /dev/null 2>&1 || :
-    fi
-fi
 
 %changelog
 * Sun Aug 13 2017 Lokesh Mandvekar <lsm5@fedoraproject.org> 17.06.0-1.gitf34e4d2
-- release docker-ce 17.06.0-ce-rc1
+- initial build
+- built moby commit f34e4d2
+- built cli commit 4b61f56
+- built docker-runc commit 2d41c047
+- built docker-containerd commit 3addd84
+- built docker-proxy commit 7b2b1fe

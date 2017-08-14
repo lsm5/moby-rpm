@@ -1,0 +1,39 @@
+[Unit]
+Description=Docker Application Container Engine
+Documentation=http://docs.docker.com
+After=network.target docker-containerd.service
+Wants=docker-storage-setup.service
+Requires=docker-containerd.service rhel-push-plugin.socket registries.service
+
+[Service]
+Type=notify
+EnvironmentFile=/run/containers/registries.conf
+EnvironmentFile=-/etc/sysconfig/docker
+EnvironmentFile=-/etc/sysconfig/docker-storage
+EnvironmentFile=-/etc/sysconfig/docker-network
+Environment=GOTRACEBACK=crash
+ExecStart=/usr/bin/dockerd \
+          --add-runtime oci=/usr/libexec/moby/docker-runc \
+          --default-runtime=oci \
+          --authorization-plugin=rhel-push-plugin \
+          --containerd /run/containerd.sock \
+          --exec-opt native.cgroupdriver=systemd \
+          --userland-proxy-path=/usr/libexec/moby/docker-proxy \
+          --init-path=/usr/libexec/moby/docker-init \
+          $OPTIONS \
+          $DOCKER_STORAGE_OPTIONS \
+          $DOCKER_NETWORK_OPTIONS \
+          $ADD_REGISTRY \
+          $BLOCK_REGISTRY \
+          $INSECURE_REGISTRY \
+          $REGISTRIES
+ExecReload=/bin/kill -s HUP $MAINPID
+TasksMax=8192
+LimitNOFILE=1048576
+LimitNPROC=1048576
+LimitCORE=infinity
+TimeoutStartSec=0
+Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target

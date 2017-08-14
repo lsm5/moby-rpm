@@ -2,12 +2,11 @@
 Description=Docker Application Container Engine
 Documentation=http://docs.docker.com
 After=network.target docker-containerd.service
-Wants=docker-storage-setup.service
 Requires=docker-containerd.service rhel-push-plugin.socket registries.service
 
 [Service]
 Type=notify
-EnvironmentFile=/run/containers/registries.conf
+EnvironmentFile=-/run/containers/registries.conf
 EnvironmentFile=-/etc/sysconfig/docker
 EnvironmentFile=-/etc/sysconfig/docker-storage
 EnvironmentFile=-/etc/sysconfig/docker-network
@@ -25,8 +24,7 @@ ExecStart=/usr/bin/dockerd \
           $DOCKER_NETWORK_OPTIONS \
           $ADD_REGISTRY \
           $BLOCK_REGISTRY \
-          $INSECURE_REGISTRY \
-          $REGISTRIES
+          $INSECURE_REGISTRY
 ExecReload=/bin/kill -s HUP $MAINPID
 TasksMax=8192
 LimitNOFILE=1048576

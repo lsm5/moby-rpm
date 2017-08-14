@@ -30,6 +30,12 @@
 %global commit_tini 949e6facb77383876aeff8a6944dde66b3089574
 %global shortcommit_tini %(c=%{commit_tini}; echo ${c:0:7})
 
+# d-s-s
+%global git_dss https://github.com/projectatomic/container-storage-setup/
+%global commit_dss 9b77bcb2cba8e272799fa21e2d484e9f6e7c34d0
+%global shortcommit_dss %(c=%{commit_dss}; echo ${c:0:7})
+%global dss_datadir %{_datadir}/%{name}-storage-setup
+
 Name: moby
 Version: 17.06.0
 Release: 1.git%{shortcommit_moby}%{?dist}
@@ -45,6 +51,7 @@ Source4: %{git_libnetwork}/archive/%{commit_libnetwork}/libnetwork-%{shortcommit
 Source5: %{git_tini}/archive/%{commit_tini}/tini-%{shortcommit_tini}.tar.gz
 Source6: %{origname}.service
 Source7: %{origname}-containerd.service
+Source8: %{git_dss}/archive/%{commit_dss}/dss-%{shortcommit_dss}.tar.gz
 URL: https://www.%{origname}.com
 
 # DWZ problem with multiple golang binary, see bug
@@ -165,6 +172,12 @@ tar zxf %{SOURCE4}
 # untar tini
 tar zxf %{SOURCE5}
 
+# untar d-s-s
+tar zxf %{SOURCE8}
+
+# untar d-s-s
+tar zxf %{SOURCE8}
+
 %build
 mkdir _build
 pushd _build
@@ -281,6 +294,14 @@ for cli_file in LICENSE MAINTAINERS NOTICE README.md; do
     cp "cli-%{commit_cli}/$cli_file" "$(pwd)/cli-$cli_file"
 done
 
+# install d-s-s
+pushd container-storage-setup-%{commit_dss}
+make install-docker DESTDIR=%{buildroot}
+install -dp %{buildroot}%{dss_datadir}
+install -p -m 644 container-storage-setup.conf %{buildroot}%{dss_datadir}/container-storage-setup
+popd
+
+
 %post
 %systemd_post %{origname}
 
@@ -296,6 +317,7 @@ done
 %doc cli-MAINTAINERS cli-NOTICE cli-README.md
 %{_bindir}/%{origname}
 %{_bindir}/%{origname}d
+%{_bindir}/%{origname}-storage-setup
 %{_libexecdir}/%{name}/%{origname}-containerd
 %{_libexecdir}/%{name}/%{origname}-containerd-shim
 %{_libexecdir}/%{name}/%{origname}-containerd-ctr
@@ -309,6 +331,9 @@ done
 %{_mandir}/man1/*
 %{_mandir}/man5/*
 %{_mandir}/man8/*
+%config(noreplace) %{_sysconfdir}/sysconfig/%{origname}-storage-setup
+%{_unitdir}/%{origname}-storage-setup.service
+%{_datadir}/%{name}-storage-setup/container-storage-setup
 
 %files vim
 %dir %{_datadir}/vim/vimfiles/{doc,ftdetect,syntax}
@@ -329,7 +354,7 @@ done
 %{_datadir}/nano/Dockerfile.nanorc
 
 %changelog
-* Sun Aug 13 2017 Lokesh Mandvekar <lsm5@fedoraproject.org> 17.06.0-1.gitf34e4d2
+* Sun Aug 13 2017 Lokesh Mandvekar <lsm5@fedoraproject.org> - 17.06.0-1.gitf34e4d2
 - initial build
 - built moby commit f34e4d2
 - built cli commit 4b61f56
